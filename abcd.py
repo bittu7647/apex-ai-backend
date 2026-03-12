@@ -28,7 +28,8 @@ def read_root():
 def predict_stock(ticker: str, days_to_predict: int = 5):
     try:
         # 1. Fetch 2 years of data (Neural Networks need a lot of history)
-        stock_data = yf.download(ticker, period="2y", interval="1d")
+        stock = yf.Ticker(ticker)
+        stock_data = stock.history(period="2y")
         
         if stock_data.empty:
             return {"error": "No data found for this ticker."}
