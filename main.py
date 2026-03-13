@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import numpy as np
 import pandas as pd
-import pandas_ta as ta  # THE NEW MATH LIBRARY
+import pandas_ta as ta  
+import requests
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
@@ -28,12 +29,17 @@ def read_root():
 @app.get("/predict/{ticker}")
 def predict_stock(ticker: str, days_to_predict: int = 5):
     try:
-        # 1. Fetch Data
-        stock = yf.Ticker(ticker)
+        # 1. Fetch Data (with a disguise to bypass Yahoo's bot blocker)
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+        
+        stock = yf.Ticker(ticker, session=session)
         df = stock.history(period="2y")
         
         if df.empty:
-            return {"error": "No data found for this ticker."}
+            return {"error": "Yahoo Finance blocked the data request or ticker is invalid. Please try again."}
 
         # 2. THE QUANT UPGRADE: Calculate Technical Indicators
         df.ta.rsi(length=14, append=True)
@@ -46,8 +52,6 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         features = ['Close', 'Volume', 'RSI_14', 'MACD_12_26_9']
         
         # 3. Dual-Scaling Strategy
-        # We need one scaler for all features, and a special one just for the Target (Close Price)
-        # so we can easily un-scale the final prediction at the end.
         feature_scaler = MinMaxScaler(feature_range=(0, 1))
         scaled_features = feature_scaler.fit_transform(df[features])
         
@@ -59,20 +63,17 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         X_train, y_train = [], []
         
         for i in range(look_back, len(scaled_features)):
-            # Take ALL 4 features for the last 60 days
             X_train.append(scaled_features[i-look_back:i])
-            # The answer key is ONLY the Close price (index 0)
             y_train.append(scaled_features[i, 0])
             
         X_train, y_train = np.array(X_train), np.array(y_train)
 
         # 5. Build the Deep Multivariate LSTM
         model = Sequential()
-        # Input shape is now (60 days, 4 features)
         model.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
-        model.add(LSTM(50, return_sequences=False)) # Second layer for deeper logic
+        model.add(LSTM(50, return_sequences=False))
         model.add(Dense(25))
-        model.add(Dense(1)) # Output is still 1 number: The predicted Close price
+        model.add(Dense(1)) 
         
         model.compile(optimizer='adam', loss='mean_squared_error')
 
@@ -91,14 +92,13 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
             predicted_prices.append(next_prediction_scaled)
             
             # Create the next day's data block
-            # We use the newly predicted Close price, but carry forward the last known Volume/RSI/MACD
             new_step = np.copy(current_batch[0, -1, :]) 
             new_step[0] = next_prediction_scaled 
             
             # Slide the window forward
             current_batch = np.append(current_batch[:, 1:, :], [[new_step]], axis=1)
 
-        # 7. Un-scale the data back to real dollars using our dedicated target scaler
+        # 7. Un-scale the data back to real dollars
         predicted_prices = target_scaler.inverse_transform(np.array(predicted_prices).reshape(-1, 1))
 
         # Format output for the React frontend
