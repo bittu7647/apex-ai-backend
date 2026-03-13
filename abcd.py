@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import numpy as np
 import pandas as pd
+import pandas_ta as ta  # THE NEW MATH LIBRARY
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
@@ -22,67 +23,85 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "LSTM Stock Prediction API is running!"}
+    return {"message": "Apex-AI Quant Model is running!"}
 
 @app.get("/predict/{ticker}")
 def predict_stock(ticker: str, days_to_predict: int = 5):
     try:
-        # 1. Fetch 2 years of data (Neural Networks need a lot of history)
+        # 1. Fetch Data
         stock = yf.Ticker(ticker)
-        stock_data = stock.history(period="2y")
+        df = stock.history(period="2y")
         
-        if stock_data.empty:
+        if df.empty:
             return {"error": "No data found for this ticker."}
 
-        df = stock_data[['Close']].dropna()
-        dataset = df.values
+        # 2. THE QUANT UPGRADE: Calculate Technical Indicators
+        df.ta.rsi(length=14, append=True)
+        df.ta.macd(fast=12, slow=26, signal=9, append=True)
+        
+        # Drop rows with blank data (MACD takes 26 days to calculate its first point)
+        df.dropna(inplace=True) 
 
-        # 2. Scale the data between 0 and 1 (Crucial for LSTM)
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data = scaler.fit_transform(dataset)
+        # Define our 4 powerful features
+        features = ['Close', 'Volume', 'RSI_14', 'MACD_12_26_9']
+        
+        # 3. Dual-Scaling Strategy
+        # We need one scaler for all features, and a special one just for the Target (Close Price)
+        # so we can easily un-scale the final prediction at the end.
+        feature_scaler = MinMaxScaler(feature_range=(0, 1))
+        scaled_features = feature_scaler.fit_transform(df[features])
+        
+        target_scaler = MinMaxScaler(feature_range=(0, 1))
+        target_scaler.fit(df[['Close']])
 
-        # 3. Create the "Memory Window" (Look at the last 60 days to predict the next 1 day)
+        # 4. Create the "Memory Window"
         look_back = 60
         X_train, y_train = [], []
         
-        for i in range(look_back, len(scaled_data)):
-            X_train.append(scaled_data[i-look_back:i, 0])
-            y_train.append(scaled_data[i, 0])
+        for i in range(look_back, len(scaled_features)):
+            # Take ALL 4 features for the last 60 days
+            X_train.append(scaled_features[i-look_back:i])
+            # The answer key is ONLY the Close price (index 0)
+            y_train.append(scaled_features[i, 0])
             
         X_train, y_train = np.array(X_train), np.array(y_train)
-        
-        # Reshape data for LSTM [samples, time steps, features]
-        X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
 
-        # 4. Build the LSTM Neural Network
+        # 5. Build the Deep Multivariate LSTM
         model = Sequential()
-        model.add(LSTM(50, return_sequences=False, input_shape=(X_train.shape[1], 1)))
-        model.add(Dense(1)) # Output layer
+        # Input shape is now (60 days, 4 features)
+        model.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
+        model.add(LSTM(50, return_sequences=False)) # Second layer for deeper logic
+        model.add(Dense(25))
+        model.add(Dense(1)) # Output is still 1 number: The predicted Close price
         
         model.compile(optimizer='adam', loss='mean_squared_error')
 
-        # 5. Train the Brain! (Epochs=5 to keep it fast for your prototype)
+        # Train the Brain! 
         model.fit(X_train, y_train, batch_size=32, epochs=5, verbose=0)
 
         # 6. Predict the Future
-        # Get the last 60 days to start the prediction chain
-        last_60_days = scaled_data[-look_back:]
-        current_batch = last_60_days.reshape((1, look_back, 1))
+        last_60_days = scaled_features[-look_back:]
+        current_batch = last_60_days.reshape((1, look_back, len(features)))
         
         predicted_prices = []
         
         for _ in range(days_to_predict):
-            # Predict the next day
-            next_prediction = model.predict(current_batch)
-            predicted_prices.append(next_prediction[0, 0])
+            # Predict the next close price
+            next_prediction_scaled = model.predict(current_batch, verbose=0)[0, 0]
+            predicted_prices.append(next_prediction_scaled)
             
-            # Slide the window forward: remove the oldest day, add the new prediction
-            current_batch = np.append(current_batch[:, 1:, :], [[next_prediction[0]]], axis=1)
+            # Create the next day's data block
+            # We use the newly predicted Close price, but carry forward the last known Volume/RSI/MACD
+            new_step = np.copy(current_batch[0, -1, :]) 
+            new_step[0] = next_prediction_scaled 
+            
+            # Slide the window forward
+            current_batch = np.append(current_batch[:, 1:, :], [[new_step]], axis=1)
 
-        # 7. Un-scale the data back to real dollar amounts
-        predicted_prices = scaler.inverse_transform(np.array(predicted_prices).reshape(-1, 1))
+        # 7. Un-scale the data back to real dollars using our dedicated target scaler
+        predicted_prices = target_scaler.inverse_transform(np.array(predicted_prices).reshape(-1, 1))
 
-        # Format output to match exactly what your React app expects
+        # Format output for the React frontend
         historical_data = df['Close'].tail(5).to_dict()
         
         prediction_dict = {}
@@ -96,4 +115,4 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Prediction failed: {str(e)}"}
