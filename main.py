@@ -1,12 +1,8 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Mutes TensorFlow warnings
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import yfinance as yf
-import numpy as np
-import pandas as pd
-import pandas_ta as ta  
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -28,7 +24,17 @@ def read_root():
 @app.get("/predict/{ticker}")
 def predict_stock(ticker: str, days_to_predict: int = 5):
     try:
-        # 1. Fetch Data (yfinance handles the bot bypass automatically now!)
+        # --- THE FIX: LAZY LOADING ---
+        # We only load these heavy libraries when a user actually requests a prediction!
+        import yfinance as yf
+        import numpy as np
+        import pandas as pd
+        import pandas_ta as ta  
+        from sklearn.preprocessing import MinMaxScaler
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense
+
+        # 1. Fetch Data (yfinance handles the bot bypass automatically)
         stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
         
