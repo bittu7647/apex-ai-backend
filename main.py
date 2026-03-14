@@ -24,8 +24,16 @@ def read_root():
 @app.get("/predict/{ticker}")
 def predict_stock(ticker: str, days_to_predict: int = 5):
     try:
-        # --- THE FIX: LAZY LOADING ---
-        # We only load these heavy libraries when a user actually requests a prediction!
+        # --- THE FIX: GLOBAL INJECTION ---
+        # We declare 'tf' as global so Keras can find it when building the neural network!
+        global tf
+        
+        # Only load the heavy AI libraries if they haven't been loaded yet
+        if 'tf' not in globals():
+            import tensorflow as tf
+            # Inject tf into the global file scope so Keras doesn't crash
+            globals()['tf'] = tf
+            
         import yfinance as yf
         import numpy as np
         import pandas as pd
@@ -34,7 +42,7 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         from tensorflow.keras.models import Sequential
         from tensorflow.keras.layers import LSTM, Dense
 
-        # 1. Fetch Data (yfinance handles the bot bypass automatically)
+        # 1. Fetch Data
         stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
         
@@ -45,7 +53,7 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         df.ta.rsi(length=14, append=True)
         df.ta.macd(fast=12, slow=26, signal=9, append=True)
         
-        # Drop rows with blank data (MACD takes 26 days to calculate its first point)
+        # Drop rows with blank data
         df.dropna(inplace=True) 
 
         # Define our 4 powerful features
@@ -87,15 +95,12 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         predicted_prices = []
         
         for _ in range(days_to_predict):
-            # Predict the next close price
             next_prediction_scaled = model.predict(current_batch, verbose=0)[0, 0]
             predicted_prices.append(next_prediction_scaled)
             
-            # Create the next day's data block
             new_step = np.copy(current_batch[0, -1, :]) 
             new_step[0] = next_prediction_scaled 
             
-            # Slide the window forward
             current_batch = np.append(current_batch[:, 1:, :], [[new_step]], axis=1)
 
         # 7. Un-scale the data back to real dollars
