@@ -138,7 +138,7 @@ def get_stock_prediction(ticker: str, days_to_predict: int):
         prediction_dict = {}
         predicted_avg = 0
         for i in range(days_to_predict):
-            pred_val = float(predicted_prices[i][0])
+            pred_val = round(float(predicted_prices[i][0]), 3)
             prediction_dict[str(i + 1)] = pred_val
             predicted_avg += pred_val
             
