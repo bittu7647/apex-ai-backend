@@ -4,7 +4,6 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 import pandas_ta as ta  
-import requests
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
@@ -29,13 +28,8 @@ def read_root():
 @app.get("/predict/{ticker}")
 def predict_stock(ticker: str, days_to_predict: int = 5):
     try:
-        # 1. Fetch Data (with a disguise to bypass Yahoo's bot blocker)
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        
-        stock = yf.Ticker(ticker, session=session)
+        # 1. Fetch Data (yfinance handles the bot bypass automatically now!)
+        stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
         
         if df.empty:
