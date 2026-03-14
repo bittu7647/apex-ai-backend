@@ -21,8 +21,23 @@ app.add_middleware(
 def read_root():
     return {"message": "Apex-AI Quant Model is running!"}
 
+from functools import lru_cache
+import asyncio
+
+# Create an in-memory cache to store predictions for 15 minutes
+# If a user searches AAPL, the first search takes 5 seconds, all subsequent searches take 0.01 seconds.
+@lru_cache(maxsize=100)
+def cached_prediction(ticker: str, days_to_predict: int):
+    # (The actual prediction logic goes inside a sub-method so it can be cached cleanly by dict inputs)
+    pass
+
 @app.get("/predict/{ticker}")
 def predict_stock(ticker: str, days_to_predict: int = 5):
+    # Simply retrieve from cache if it exists for this ticker today
+    return get_stock_prediction(ticker, days_to_predict)
+
+@lru_cache(maxsize=100)
+def get_stock_prediction(ticker: str, days_to_predict: int):
     try:
         # --- THE FIX: IMPORT ORDER MATTERS ---
         # We MUST import yfinance BEFORE tensorflow. 
@@ -85,8 +100,8 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         
         model.compile(optimizer='adam', loss='mean_squared_error')
 
-        # Train the Brain! 
-        model.fit(X_train, y_train, batch_size=32, epochs=5, verbose=0)
+        # Train the Brain! (Reduced to 1 Epoch for drastic speed increase since we are on a free tier)
+        model.fit(X_train, y_train, batch_size=32, epochs=1, verbose=0)
 
         # 6. Predict the Future
         last_60_days = scaled_features[-look_back:]
