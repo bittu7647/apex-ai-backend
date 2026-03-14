@@ -56,8 +56,8 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         # Drop rows with blank data
         df.dropna(inplace=True) 
 
-        # Define our 4 powerful features
-        features = ['Close', 'Volume', 'RSI_14', 'MACD_12_26_9']
+        # Define our 7 powerful features (The true Quant Upgrade)
+        features = ['Close', 'Open', 'High', 'Low', 'Volume', 'RSI_14', 'MACD_12_26_9']
         
         # 3. Dual-Scaling Strategy
         feature_scaler = MinMaxScaler(feature_range=(0, 1))
@@ -109,6 +109,17 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         # Format output for the React frontend
         historical_data = df['Close'].tail(5).to_dict()
         
+        latest_data = df.iloc[-1]
+        indicators_dict = {
+            "RSI": float(latest_data['RSI_14']),
+            "MACD": float(latest_data['MACD_12_26_9']),
+            "Close": float(latest_data['Close']),
+            "Open": float(latest_data['Open']),
+            "High": float(latest_data['High']),
+            "Low": float(latest_data['Low']),
+            "Volume": float(latest_data['Volume'])
+        }
+        
         prediction_dict = {}
         for i in range(days_to_predict):
             prediction_dict[str(i + 1)] = float(predicted_prices[i][0])
@@ -116,7 +127,8 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         return {
             "ticker": ticker.upper(),
             "historical_close": historical_data,
-            "predictions": prediction_dict
+            "predictions": prediction_dict,
+            "current_indicators": indicators_dict
         }
 
     except Exception as e:
