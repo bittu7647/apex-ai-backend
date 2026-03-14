@@ -121,14 +121,42 @@ def predict_stock(ticker: str, days_to_predict: int = 5):
         }
         
         prediction_dict = {}
+        predicted_avg = 0
         for i in range(days_to_predict):
-            prediction_dict[str(i + 1)] = float(predicted_prices[i][0])
+            pred_val = float(predicted_prices[i][0])
+            prediction_dict[str(i + 1)] = pred_val
+            predicted_avg += pred_val
+            
+        predicted_avg = predicted_avg / days_to_predict
+        current_price = indicators_dict["Close"]
+        
+        # Bullish or Bearish?
+        price_diff_percent = ((predicted_avg - current_price) / current_price) * 100
+        
+        # Base confidence is 50. Max confidence tops out at 99%.
+        # A 5% expected move equals +45 confidence points (very strong).
+        confidence_offset = min(49, abs(price_diff_percent) * 9) 
+        confidence_score = round(50 + confidence_offset)
+        
+        if price_diff_percent > 0.5:
+            signal = "BULLISH"
+        elif price_diff_percent < -0.5:
+            signal = "BEARISH"
+        else:
+            signal = "NEUTRAL"
+            
+        ai_confidence = {
+            "score": confidence_score,
+            "signal": signal,
+            "projected_move": round(price_diff_percent, 2)
+        }
 
         return {
             "ticker": ticker.upper(),
             "historical_close": historical_data,
             "predictions": prediction_dict,
-            "current_indicators": indicators_dict
+            "current_indicators": indicators_dict,
+            "ai_confidence": ai_confidence
         }
 
     except Exception as e:
