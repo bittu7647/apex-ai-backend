@@ -24,20 +24,20 @@ def read_root():
 @app.get("/predict/{ticker}")
 def predict_stock(ticker: str, days_to_predict: int = 5):
     try:
-        # --- THE FIX: GLOBAL INJECTION ---
-        # We declare 'tf' as global so Keras can find it when building the neural network!
-        global tf
-        
-        # Only load the heavy AI libraries if they haven't been loaded yet
-        if 'tf' not in globals():
-            import tensorflow as tf
-            # Inject tf into the global file scope so Keras doesn't crash
-            globals()['tf'] = tf
-            
+        # --- THE FIX: IMPORT ORDER MATTERS ---
+        # We MUST import yfinance BEFORE tensorflow. 
+        # TensorFlow accidentally breaks the browser disguise if it loads first!
         import yfinance as yf
         import numpy as np
         import pandas as pd
         import pandas_ta as ta  
+        
+        # Now that yfinance is safely in memory, it is safe to load TensorFlow
+        global tf
+        if 'tf' not in globals():
+            import tensorflow as tf
+            globals()['tf'] = tf
+            
         from sklearn.preprocessing import MinMaxScaler
         from tensorflow.keras.models import Sequential
         from tensorflow.keras.layers import LSTM, Dense
