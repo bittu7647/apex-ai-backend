@@ -81,8 +81,8 @@ def get_stock_prediction(ticker: str, days_to_predict: int):
         target_scaler = MinMaxScaler(feature_range=(0, 1))
         target_scaler.fit(df[['Close']])
 
-        # 4. Create the "Memory Window"
-        look_back = 60
+        # 4. Create the "Memory Window" (30 days is sufficient for 5-day forecasts)
+        look_back = 30
         X_train, y_train = [], []
         
         for i in range(look_back, len(scaled_features)):
@@ -91,11 +91,11 @@ def get_stock_prediction(ticker: str, days_to_predict: int):
             
         X_train, y_train = np.array(X_train), np.array(y_train)
 
-        # 5. Build the Deep Multivariate LSTM
+        # 5. Build the Deep Multivariate LSTM (Lightweight for speed)
         model = Sequential()
-        model.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
-        model.add(LSTM(50, return_sequences=False))
-        model.add(Dense(25))
+        model.add(LSTM(32, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
+        model.add(LSTM(32, return_sequences=False))
+        model.add(Dense(16))
         model.add(Dense(1)) 
         
         model.compile(optimizer='adam', loss='mean_squared_error')
