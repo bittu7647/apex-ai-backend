@@ -57,9 +57,9 @@ def get_stock_prediction(ticker: str, days_to_predict: int):
         from tensorflow.keras.models import Sequential
         from tensorflow.keras.layers import LSTM, Dense
 
-        # 1. Fetch Data
+        # 1. Fetch Data (Reduced from 2y to 6mo for drastic speed improvements on cold starts)
         stock = yf.Ticker(ticker)
-        df = stock.history(period="2y")
+        df = stock.history(period="6mo")
         
         if df.empty:
             return {"error": "Yahoo Finance blocked the data request or ticker is invalid. Please try again."}
